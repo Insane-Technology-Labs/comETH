@@ -244,11 +244,14 @@ contract itETH is OFT, AccessControl {
     }
 
     /// @notice standard decimal return
+    /// @return uint8 decimals
     function decimals() public pure override returns (uint8) {
         return 18;
     }
 
     /// @notice function for returning the total points and total referral points
+    /// @return totalPointsRegular - total points accrued overall (inc. referral points)
+    /// @return totalPointsReferred - total referral points accrued overall
     function totalPointsBreakdown()
         public
         view
