@@ -4197,12 +4197,13 @@ contract itETH is OFT, AccessControl {
     IERC20 public immutable WETH; /// @notice WETH address on the chain
     bool public paused; /// @notice whether mint/redeem functionality are paused
 
-    uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
     uint256 public constant REF_BASE = 1e3; /// @notice refbase is hardcoded to 1000 (100%)
+    uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
     uint256 public refDivisor = 1e2; /// @notice 10% by default (100/1000)
-    uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
     uint256 public lastProcessedID; /// @notice last processed ID regardless of height
     uint256 public highestProcessedID; /// @notice the last request (by highest index) that was processed
+
+    uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
 
     modifier WhileNotPaused() {
         if (paused) revert Paused();
