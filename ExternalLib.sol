@@ -10,11 +10,18 @@ library ErrorLib {
     error Failed();
 }
 
-library EventLib{
+library EventLib {
     event Cooked(address indexed user, uint256 indexed amount);
     event RequestRedemption(address indexed user, uint256 indexed amount);
     event ProcessRedemption(uint256 indexed requestID, uint256 indexed amount);
-    event ReferralDeposit(address indexed victim, address indexed referrer, uint256 indexed extraRefPoints);
-    event SybilPurged(address indexed sybil, uint256 indexed burnedPoints);
-    event AccruePoints(address indexed user, uint256 indexed accruedPoints);
+    event ReferralDeposit(
+        address indexed victim,
+        address indexed referrer,
+        uint256 indexed amountRefExtra
+    );
+    event PausedContract(bool indexed status);
+    event TreasurySet(address indexed treasury);
+    event MinReqSet(uint256 indexed minReq);
+    event RefDivisorSet(uint256 indexed refDivisor);
+    event EtherDeposited(address indexed depositor, uint256 indexed amount);
 }

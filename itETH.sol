@@ -21,11 +21,11 @@ contract itETH is OFT, AccessControl {
         bool fulfilled; /// @dev whether the request has been filled already or not
     }
     mapping(uint256 => RequestPayload) public payloads; /// @dev mapping for tracking requests
-    mapping(address => uint256) public cooked; /// @dev mapping for tracking the user's point qualifications for minting itETH
+    mapping(address => bool) public cooked; /// @dev mapping for tracking whether the user has deposited before
     mapping(address => address) public referrals; /// @dev mapping to track the referral status of users
     mapping(address => uint256) public earnedReferralPoints; /// @dev mapping that tracks the ref pts earned per user
-    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE"); /// @custom:accesscontrol Operator access control role
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE"); /// @custom:accesscontrol Minter access control role
 
     address public treasury = 0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d; /// @notice multichain multisig address
     IERC20 public immutable WETH; /// @notice WETH address on the chain
@@ -33,11 +33,11 @@ contract itETH is OFT, AccessControl {
 
     uint256 public constant REF_BASE = 1e3; /// @notice refbase is hardcoded to 1000 (100%)
     uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
-    uint256 public refDivisor = 1e2; /// @notice 10% by default (100/1000)
+    uint256 public refDivisor = 1e1; /// @notice 1% by default (10/1000)
     uint256 public lastProcessedID; /// @notice last processed ID regardless of height
     uint256 public highestProcessedID; /// @notice the last request (by highest index) that was processed
     uint256 public totalReferralPoints; /// @notice total referred UPI points given
-    uint256 public totalPoints; /// @notice total UPI points overall
+    uint256 public totalDepositedEther; /// @notice total deposits ever
 
     uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
 
@@ -78,19 +78,21 @@ contract itETH is OFT, AccessControl {
     /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
     function cook(uint256 _amount, address _referral) public WhileNotPaused {
         if (!(_amount > 0)) revert ErrorLib.Zero();
+        address referral = _referral;
+        referral == address(0) ? referral = treasury : referral = referral;
         WETH.transferFrom(msg.sender, address(this), _amount);
         WETH.transfer(treasury, _amount);
         _mint(msg.sender, _amount);
         /// @dev if there is no bound referral
-        if (cooked[msg.sender] == 0 && referrals[msg.sender] == address(0))
-            referrals[msg.sender] = _referral;
-        cooked[msg.sender] += _amount;
-        totalPoints += _amount;
+        if (!cooked[msg.sender] && referrals[msg.sender] == address(0))
+            referrals[msg.sender] = referral;
+        totalDepositedEther += _amount;
+        emit EventLib.EtherDeposited(msg.sender, _amount); /// @dev emit the amount of eth deposited and by whom
+        cooked[msg.sender] = true; /// @dev state the user has deposited before
         /// @dev if it is above the min threshold
         if (_amount > minReq) {
             uint256 refPts = ((_amount * refDivisor) / REF_BASE); /// @dev refDivisor * amount of referral deposits are accounted to the referee
             earnedReferralPoints[referrals[msg.sender]] += refPts;
-            totalPoints += refPts;
             totalReferralPoints += refPts;
             emit EventLib.ReferralDeposit(
                 msg.sender,
@@ -108,9 +110,6 @@ contract itETH is OFT, AccessControl {
         _burn(msg.sender, _amount);
         ++_requestCounter;
         payloads[_requestCounter] = RequestPayload(msg.sender, _amount, false);
-        if (cooked[msg.sender] < _amount) revert ErrorLib.Failed(); /// @dev if the user has 0 points, do not allow redemption request
-        cooked[msg.sender] -= _amount; /// @dev remove from cooked mapping once redemption requested
-        totalPoints -= _amount; /// @dev remove total points upon redemption
         emit EventLib.RequestRedemption(msg.sender, _amount);
     }
 
@@ -142,6 +141,7 @@ contract itETH is OFT, AccessControl {
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         treasury = _treasury;
+        emit EventLib.TreasurySet(treasury);
     }
 
     /// @notice function to pause the printing of itETH
@@ -149,12 +149,14 @@ contract itETH is OFT, AccessControl {
     function setPaused(bool _status) public onlyRole(OPERATOR_ROLE) {
         if (paused == _status) revert ErrorLib.NoChangeInBoolean();
         paused = _status;
+        emit EventLib.PausedContract(_status);
     }
 
     /// @notice set the minimum eth amount for redemptions
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
     function setMinReq(uint256 _min) public onlyRole(OPERATOR_ROLE) {
         minReq = _min;
+        emit EventLib.MinReqSet(minReq);
     }
 
     /// @notice set the referral divisor
@@ -162,6 +164,7 @@ contract itETH is OFT, AccessControl {
     function setRefDivisor(uint256 _divisor) public onlyRole(OPERATOR_ROLE) {
         if (refDivisor < 1e1) revert ErrorLib.BelowMinimum();
         refDivisor = _divisor;
+        emit EventLib.RefDivisorSet(refDivisor);
     }
 
     /// @notice convert weth and other tokens to desired LRT
@@ -200,64 +203,10 @@ contract itETH is OFT, AccessControl {
         if (!success) revert ErrorLib.Failed();
     }
 
-    /// @notice function for processing batched sybils
-    /// @custom:accesscontrol execution is limited to the DEFAULT_ADMIN_ROLE
-    function processSybils(address[] calldata _sybils)
-        public
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        for (uint256 i = 0; i < _sybils.length; ++i) {
-            _sybil(_sybils[i]);
-        }
-    }
-
-    /// @notice function for accrual a batch of points for users
-    /// @custom:accesscontrol execution is limited to the DEFAULT_ADMIN_ROLE
-    function processAccruals(
-        address[] calldata _users,
-        uint256[] calldata _amounts
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < _users.length; ++i)
-            _accrue(_users[i], _amounts[i]);
-    }
-
-    /// @dev internal function for accruing points
-    function _accrue(address _user, uint256 _amount) internal {
-        cooked[_user] += _amount;
-        emit EventLib.AccruePoints(_user, _amount);
-    }
-
-    /// @dev internal function for burning sybil points
-    function _sybil(address _sybilWallet) internal {
-        if (
-            !(cooked[_sybilWallet] > 0) &&
-            !(earnedReferralPoints[_sybilWallet] > 0)
-        ) revert ErrorLib.Failed(); /// @dev if they have no points, revert as a failure
-        uint256 sybilCooked = cooked[_sybilWallet];
-        totalPoints -= sybilCooked; /// @dev remove points from total
-        cooked[_sybilWallet] = 0; /// @dev set points to zero
-        uint256 sybilRefPoints = earnedReferralPoints[_sybilWallet];
-        totalReferralPoints -= sybilRefPoints; /// @dev remove ref points from the totalRefPoints accrued
-        earnedReferralPoints[_sybilWallet] = 0; /// @dev set ref points to zero
-
-        emit EventLib.SybilPurged(_sybilWallet, sybilCooked); /// @dev emit event for purging sybils
-    }
-
     /// @notice standard decimal return
     /// @return uint8 decimals
     function decimals() public pure override returns (uint8) {
         return 18;
-    }
-
-    /// @notice function for returning the total points and total referral points
-    /// @return totalPointsRegular - total points accrued overall (inc. referral points)
-    /// @return totalPointsReferred - total referral points accrued overall
-    function totalPointsBreakdown()
-        public
-        view
-        returns (uint256 totalPointsRegular, uint256 totalPointsReferred)
-    {
-        return (totalPoints, totalReferralPoints);
     }
 
     /// @dev internal function to process each request
