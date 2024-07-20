@@ -162,6 +162,7 @@ contract itETH is OFT, AccessControl {
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
     function setRefDivisor(uint256 _divisor) public onlyRole(OPERATOR_ROLE) {
         if (refDivisor < 1e1) revert ErrorLib.BelowMinimum();
+        if (refDivisor > REF_BASE) revert ErrorLib.AboveMinimum();
         refDivisor = _divisor;
         emit EventLib.RefDivisorSet(refDivisor);
     }

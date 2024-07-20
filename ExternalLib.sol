@@ -8,6 +8,7 @@ library ErrorLib {
     error Fulfilled();
     error BelowMinimum();
     error Failed();
+    error AboveMinimum();
 }
 
 library EventLib {
