@@ -161,8 +161,8 @@ contract itETH is OFT, AccessControl {
     /// @notice set the referral divisor
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
     function setRefDivisor(uint256 _divisor) public onlyRole(OPERATOR_ROLE) {
-        if (refDivisor < 1e1) revert ErrorLib.BelowMinimum();
-        if (refDivisor > REF_BASE) revert ErrorLib.AboveMinimum();
+        if (refDivisor < 1e1) revert ErrorLib.DivisorBelowMinimum();
+        if (refDivisor > REF_BASE) revert ErrorLib.DivisorAboveMinimum();
         refDivisor = _divisor;
         emit EventLib.RefDivisorSet(refDivisor);
     }
@@ -189,7 +189,7 @@ contract itETH is OFT, AccessControl {
             if (
                 ((IERC20(_tokensOut[i]).balanceOf(treasury)) -
                     balanceBefore[i]) < _minAmountsOut[i]
-            ) revert ErrorLib.Failed();
+            ) revert ErrorLib.SwapFailed();
         }
     }
 

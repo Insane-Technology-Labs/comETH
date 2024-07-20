@@ -11,6 +11,7 @@ library ErrorLib {
     error FallbackFailed();
     error FailedOnSend();
     error AboveMinimum();
+    error SwapFailed();
 }
 
 library EventLib {
