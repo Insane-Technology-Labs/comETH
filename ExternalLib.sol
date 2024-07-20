@@ -8,6 +8,8 @@ library ErrorLib {
     error Fulfilled();
     error BelowMinimum();
     error Failed();
+    error FallbackFailed();
+    error FailedOnSend();
     error AboveMinimum();
 }
 
