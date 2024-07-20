@@ -4182,7 +4182,7 @@ contract itETH is OFT, AccessControl {
         uint256 amount; /// @dev the amount of itETH requested for withdrawal
         bool fulfilled; /// @dev whether the request has been filled already or not
     }
-    mapping(uint256 => RequestPayload) payloads;
+    mapping(uint256 => RequestPayload) public payloads;
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
