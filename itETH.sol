@@ -232,4 +232,14 @@ contract itETH is OFT, AccessControl {
 
         emit EventLib.ProcessRedemption(_reqID, amt); /// @dev emit event for processing the request
     }
+
+    /// @dev revert on msg.value being delivered to the address w/o data
+    receive() external payable {
+        revert ErrorLib.FailedOnSend();
+    }
+
+    /// @dev revert on non-existent function calls or payload eth sends
+    fallback() external payable {
+        revert ErrorLib.FallbackFailed();
+    }
 }
