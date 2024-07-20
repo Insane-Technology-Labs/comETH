@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // File: @openzeppelin/contracts/access/IAccessControl.sol
 
 // OpenZeppelin Contracts (last updated v5.0.0) (access/IAccessControl.sol)
@@ -4176,13 +4177,19 @@ error Fulfilled();
 error BelowMinimum();
 
 contract itETH is OFT, AccessControl {
+    /// @title Insane Technology Restaked Ether Basket (itETH)
+    /// @author Insane Technology
+    /// @custom:description ether wrapper which deposits into LRT protocols and uses a pass-through formula for distributing points to depositors
+
     /// @dev struct that holds the request payloads
     struct RequestPayload {
         address owner; /// @dev owner of the request
         uint256 amount; /// @dev the amount of itETH requested for withdrawal
         bool fulfilled; /// @dev whether the request has been filled already or not
     }
-    mapping(uint256 => RequestPayload) public payloads;
+    mapping(uint256 => RequestPayload) public payloads; /// @dev mapping for tracking requests
+    mapping(address => uint256) public cooked; /// @dev mapping for tracking the user's point qualifications for minting itETH
+    mapping(address => address) public referrals; /// @dev mapping to track the referral status of users
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
@@ -4190,9 +4197,10 @@ contract itETH is OFT, AccessControl {
     IERC20 public immutable WETH; /// @notice WETH address on the chain
     bool public paused; /// @notice whether mint/redeem functionality are paused
 
-    uint256 public minReq = 0.0001 ether; /// @notice the minimum amount of weth needed to request a redemption
+    uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
     uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
-    uint256 public lastProcessedID; /// @notice the last request (by highest index) that was processed
+    uint256 public lastProcessedID; /// @notice last processed ID regardless of height
+    uint256 public highestProcessedID; /// @notice the last request (by highest index) that was processed
 
     modifier WhileNotPaused() {
         if (paused) revert Paused();
@@ -4201,7 +4209,12 @@ contract itETH is OFT, AccessControl {
 
     /// @dev layerzero endpoint address and weth address on the chain
     constructor(address _endpoint, address _weth)
-        OFT("Insane Technology Ether", "itETH", _endpoint, treasury)
+        OFT(
+            "Insane Technology Restaked Ether Basket",
+            "itETH",
+            _endpoint,
+            treasury
+        )
         Ownable(treasury)
     {
         _requestCounter = 0; /// @dev iterative, start at 0
@@ -4213,21 +4226,33 @@ contract itETH is OFT, AccessControl {
         _grantRole(MINTER_ROLE, treasury);
     }
 
-    /// @notice "cook" EITH with your WETH
+    /// @notice "cook" itETH with your WETH
     /// @custom:description transfer the wrapped ether from your wallet and recieve minted itETH
-    function cook(uint256 amount) public WhileNotPaused {
-        WETH.transferFrom(msg.sender, address(this), amount);
-        WETH.transfer(treasury, amount);
-        _mint(msg.sender, amount);
+    /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
+    function cook(uint256 _amount, address _referral) public WhileNotPaused {
+        if (!(_amount > 0)) revert Zero();
+        WETH.transferFrom(msg.sender, address(this), _amount);
+        WETH.transfer(treasury, _amount);
+        _mint(msg.sender, _amount);
+        /// @dev if there is no bound referral
+        if (cooked[msg.sender] == 0 && referrals[msg.sender] == address(0))
+            referrals[msg.sender] = _referral;
+        cooked[msg.sender] += _amount;
+        /// @dev if it is above the min threshold
+        if (_amount > minReq) {
+            cooked[referrals[msg.sender]] += ((_amount * 100) / 1000); /// @dev 10% of referral deposits are accounted to the referee
+        }
     }
 
     /// @notice request redemption from the treasury
     /// @dev non-atomic redemption queue system
+    /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
     function requestRedemption(uint256 _amount) public WhileNotPaused {
         if (_amount < minReq) revert BelowMinimum();
         _burn(msg.sender, _amount);
         ++_requestCounter;
         payloads[_requestCounter] = RequestPayload(msg.sender, _amount, false);
+        cooked[msg.sender] -= _amount; /// @dev remove from cooked mapping once redemption requested
     }
 
     /// @notice process a batch of redeem requests
@@ -4247,6 +4272,7 @@ contract itETH is OFT, AccessControl {
     }
 
     /// @dev standard ERC-20 burn
+    /// @custom:accesscontrol this function is not limited to anyone
     function burn(uint256 amount) public {
         _burn(msg.sender, amount);
     }
@@ -4285,14 +4311,18 @@ contract itETH is OFT, AccessControl {
             pl.owner,
             pl.fulfilled
         );
-        if (filled) revert Fulfilled();
-        if (!(amt > 0)) revert Zero();
+        if (filled) revert Fulfilled(); /// @dev if fulfilled, revert
+        if (!(amt > 0)) revert Zero(); /// @dev if the amount is not greater than 0, revert
         WETH.transferFrom(treasury, address(this), amt);
         WETH.transfer(sendTo, amt);
+        /// @dev set the payload values to 0/true;
         pl.amount = 0;
         pl.fulfilled = true;
-        lastProcessedID < _reqID /// @dev ternary operator for updating the last processed request ID
-            ? lastProcessedID = _reqID
-            : lastProcessedID = lastProcessedID;
+
+        lastProcessedID = _reqID; /// @dev stores the last processed ID regardless of height
+
+        highestProcessedID < _reqID /// @dev ternary operator for updating the highest processed request ID
+            ? highestProcessedID = _reqID
+            : highestProcessedID = highestProcessedID;
     }
 }
