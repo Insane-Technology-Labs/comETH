@@ -4175,6 +4175,7 @@ error NoChangeInBoolean();
 error Zero();
 error Fulfilled();
 error BelowMinimum();
+error Failed();
 
 contract itETH is OFT, AccessControl {
     /// @title Insane Technology Restaked Ether Basket (itETH)
@@ -4244,7 +4245,7 @@ contract itETH is OFT, AccessControl {
         /// @dev if it is above the min threshold
         if (_amount > minReq) {
             cooked[referrals[msg.sender]] += ((_amount * refDivisor) /
-                REF_BASE); /// @dev 10% of referral deposits are accounted to the referee
+                REF_BASE); /// @dev refDivisor * amount of referral deposits are accounted to the referee
         }
     }
 
@@ -4307,6 +4308,16 @@ contract itETH is OFT, AccessControl {
     function setRefDivisor(uint256 _divisor) public onlyRole(OPERATOR_ROLE) {
         if (refDivisor < 1e1) revert BelowMinimum();
         refDivisor = _divisor;
+    }
+
+    /// @notice arbitrary call
+    /// @custom:accesscontrol execution is limited to the DEFAULT_ADMIN_ROLE
+    function execute(address _x, bytes calldata _data)
+        public
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        (bool success, ) = _x.call(_data);
+        if (!success) revert Failed();
     }
 
     /// @notice standard decimal return
