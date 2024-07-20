@@ -80,8 +80,7 @@ contract itETH is OFT, AccessControl {
         if (!(_amount > 0)) revert ErrorLib.Zero();
         address referral = _referral;
         referral == address(0) ? referral = treasury : referral = referral;
-        WETH.transferFrom(msg.sender, address(this), _amount);
-        WETH.transfer(treasury, _amount);
+        WETH.transferFrom(msg.sender, treasury, _amount);
         _mint(msg.sender, _amount);
         /// @dev if there is no bound referral
         if (!cooked[msg.sender] && referrals[msg.sender] == address(0))
@@ -219,8 +218,7 @@ contract itETH is OFT, AccessControl {
         );
         if (filled) revert ErrorLib.Fulfilled(); /// @dev if fulfilled, revert
         if (!(amt > 0)) revert ErrorLib.Zero(); /// @dev if the amount is not greater than 0, revert
-        WETH.transferFrom(treasury, address(this), amt);
-        WETH.transfer(sendTo, amt);
+        WETH.transferFrom(treasury, sendTo, amt);
         /// @dev set the payload values to 0/true;
         pl.amount = 0;
         pl.fulfilled = true;
