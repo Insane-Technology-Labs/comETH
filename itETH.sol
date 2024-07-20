@@ -4178,9 +4178,9 @@ error BelowMinimum();
 contract itETH is OFT, AccessControl {
     /// @dev struct that holds the request payloads
     struct RequestPayload {
-        address owner;
-        uint256 amount;
-        bool fulfilled;
+        address owner; /// @dev owner of the request
+        uint256 amount; /// @dev the amount of itETH requested for withdrawal
+        bool fulfilled; /// @dev whether the request has been filled already or not
     }
     mapping(uint256 => RequestPayload) payloads;
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
@@ -4190,7 +4190,7 @@ contract itETH is OFT, AccessControl {
     IERC20 public immutable WETH; /// @notice WETH address on the chain
     bool public paused; /// @notice whether mint/redeem functionality are paused
 
-    uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
+    uint256 public minReq = 0.0001 ether; /// @notice the minimum amount of weth needed to request a redemption
     uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
     uint256 public lastProcessedID; /// @notice the last request (by highest index) that was processed
 
@@ -4264,6 +4264,12 @@ contract itETH is OFT, AccessControl {
     function setPaused(bool _status) public onlyRole(OPERATOR_ROLE) {
         if (paused == _status) revert NoChangeInBoolean();
         paused = _status;
+    }
+
+    /// @notice set the minimum eth amount for redemptions
+    /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
+    function setMinReq(uint256 _min) public onlyRole(OPERATOR_ROLE) {
+        minReq = _min;
     }
 
     /// @notice standard decimal return
