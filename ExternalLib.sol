@@ -12,6 +12,8 @@ library ErrorLib {
     error FailedOnSend();
     error AboveMinimum();
     error SwapFailed();
+    error DivisorBelowMinimum();
+    error DivisorAboveMinimum();
 }
 
 library EventLib {
