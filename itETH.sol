@@ -4198,6 +4198,8 @@ contract itETH is OFT, AccessControl {
     bool public paused; /// @notice whether mint/redeem functionality are paused
 
     uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
+    uint256 public constant REF_BASE = 1e3; /// @notice refbase is hardcoded to 1000 (100%)
+    uint256 public refDivisor = 1e2; /// @notice 10% by default (100/1000)
     uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
     uint256 public lastProcessedID; /// @notice last processed ID regardless of height
     uint256 public highestProcessedID; /// @notice the last request (by highest index) that was processed
@@ -4240,7 +4242,8 @@ contract itETH is OFT, AccessControl {
         cooked[msg.sender] += _amount;
         /// @dev if it is above the min threshold
         if (_amount > minReq) {
-            cooked[referrals[msg.sender]] += ((_amount * 100) / 1000); /// @dev 10% of referral deposits are accounted to the referee
+            cooked[referrals[msg.sender]] += ((_amount * refDivisor) /
+                REF_BASE); /// @dev 10% of referral deposits are accounted to the referee
         }
     }
 
@@ -4296,6 +4299,13 @@ contract itETH is OFT, AccessControl {
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
     function setMinReq(uint256 _min) public onlyRole(OPERATOR_ROLE) {
         minReq = _min;
+    }
+
+    /// @notice set the referral divisor
+    /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
+    function setRefDivisor(uint256 _divisor) public onlyRole(OPERATOR_ROLE) {
+        if (refDivisor < 1e1) revert BelowMinimum();
+        refDivisor = _divisor;
     }
 
     /// @notice standard decimal return
