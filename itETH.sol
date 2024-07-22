@@ -5,9 +5,9 @@ import {OFT} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFT.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import "./ExternalLib.sol"; /// @dev import external libraries for error and event handling
-
+/// @dev import external libraries for error and event handling
 /// @dev implements ErrorLib & EventLib
+import "./ExternalLib.sol";
 
 contract itETH is OFT, AccessControl {
     /// @title Insane Technology Restaked Ether Basket (itETH)
@@ -16,30 +16,49 @@ contract itETH is OFT, AccessControl {
 
     /// @dev struct that holds the request payloads
     struct RequestPayload {
-        address owner; /// @dev owner of the request
-        uint256 amount; /// @dev the amount of itETH requested for withdrawal
-        bool fulfilled; /// @dev whether the request has been filled already or not
+        /// @dev owner of the request
+        address owner;
+        /// @dev the amount of itETH requested for withdrawal
+        uint256 amount;
+        /// @dev whether the request has been filled already or not
+        bool fulfilled;
     }
-    mapping(uint256 => RequestPayload) public payloads; /// @dev mapping for tracking requests
-    mapping(address => address) public referrals; /// @dev mapping to track the referral status of users
-    mapping(address => uint256) public earnedReferralPoints; /// @dev mapping that tracks the ref pts earned per user
-    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE"); /// @custom:accesscontrol Operator access control role
-    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE"); /// @custom:accesscontrol Minter access control role
+    /// @dev mapping for tracking requests
+    mapping(uint256 => RequestPayload) public payloads;
+    /// @dev mapping to track the referral status of users
+    mapping(address => address) public referrals;
+    /// @dev mapping that tracks the ref pts earned per user
+    mapping(address => uint256) public earnedReferralPoints;
+    /// @custom:accesscontrol Operator access control role
+    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    /// @custom:accesscontrol Minter access control role
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
-    address public treasury = 0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d; /// @notice multichain multisig address
-    IERC20 public immutable WETH; /// @notice WETH address on the chain
-    bool public paused; /// @notice whether mint/redeem functionality are paused
+    /// @notice multichain multisig address
+    address public treasury = 0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
+    /// @notice WETH address on the chain
+    IERC20 public immutable WETH;
+    /// @notice whether mint/redeem functionality are paused
+    bool public paused;
 
-    uint256 public constant REF_BASE = 1e3; /// @notice refbase is hardcoded to 1000 (100%)
-    uint256 public minReq = 0.001 ether; /// @notice the minimum amount of weth needed to request a redemption
-    uint256 public refDivisor = 1e1; /// @notice 1% by default (10/1000)
-    uint256 public lastProcessedID; /// @notice last processed ID regardless of height
-    uint256 public highestProcessedID; /// @notice the last request (by highest index) that was processed
-    uint256 public totalReferralPoints; /// @notice total referred UPI points given
-    uint256 public totalDepositedEther; /// @notice total deposits ever
+    /// @notice refbase is hardcoded to 1000 (100%)
+    uint256 public constant REF_BASE = 1e3;
+    /// @notice the minimum amount of weth needed to request a redemption
+    uint256 public minReq = 0.001 ether;
+    /// @notice 1% by default (10/1000)
+    uint256 public refDivisor = 1e1;
+    /// @notice last processed ID regardless of height
+    uint256 public lastProcessedID;
+    /// @notice the last request (by highest index) that was processed
+    uint256 public highestProcessedID;
+    /// @notice total referred deposit points given
+    uint256 public totalReferralDeposits;
+    /// @notice total deposits ever
+    uint256 public totalDepositedEther;
+    /// @dev internal counter to see what the next request ID would be
+    uint256 internal _requestCounter;
 
-    uint256 internal _requestCounter; /// @dev internal counter to see what the next request ID would be
-
+    /// @notice odos router contract address
     address public odos;
 
     modifier WhileNotPaused() {
@@ -61,15 +80,24 @@ contract itETH is OFT, AccessControl {
         )
         Ownable(treasury)
     {
-        _requestCounter = 0; /// @dev iterative, start at 0
-        paused = false; /// @dev unpaused by default
-        WETH = IERC20(_weth); /// @dev initialize the WETH variable
-        odos = _odos; /// @dev set odos router address
-        totalReferralPoints = 0; ///@dev start at 0
+        /// @dev iterative, start at 0
+        _requestCounter = 0;
+        /// @dev paused by default
+        paused = true;
+        /// @dev initialize the WETH variable
+        WETH = IERC20(_weth);
+        /// @dev initialize odos address
+        odos = _odos;
+        ///@dev start at 0
+        totalReferralDeposits = 0;
         /// @dev grant the appropriate roles to the treasury
         _grantRole(DEFAULT_ADMIN_ROLE, treasury);
         _grantRole(OPERATOR_ROLE, treasury);
         _grantRole(MINTER_ROLE, treasury);
+        /// @dev grant roles to deployer for initial testing
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(OPERATOR_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
     }
 
     /// @notice "cook" itETH with your WETH
@@ -90,12 +118,14 @@ contract itETH is OFT, AccessControl {
         WETH.transferFrom(msg.sender, address(this), _amount);
         _mint(msg.sender, _amount);
         totalDepositedEther += _amount;
-        emit EventLib.EtherDeposited(msg.sender, _amount); /// @dev emit the amount of eth deposited and by whom
+        /// @dev emit the amount of eth deposited and by whom
+        emit EventLib.EtherDeposited(msg.sender, _amount);
         /// @dev if it is above the min threshold
         if (_amount > minReq) {
-            uint256 refPts = ((_amount * refDivisor) / REF_BASE); /// @dev refDivisor * amount of referral deposits are accounted to the referee
+            /// @dev refDivisor * amount of referral deposits are accounted to the referee
+            uint256 refPts = ((_amount * refDivisor) / REF_BASE);
             earnedReferralPoints[referral] += refPts;
-            totalReferralPoints += refPts;
+            totalReferralDeposits += refPts;
             emit EventLib.ReferralDeposit(msg.sender, referral, refPts);
         }
     }
@@ -126,8 +156,8 @@ contract itETH is OFT, AccessControl {
                 highestProcessedID = _redemptionIDs[i];
             }
         }
-
-        lastProcessedID = _redemptionIDs[_redemptionIDs.length - 1]; /// @dev stores the last processed ID regardless of height
+        /// @dev stores the last processed ID regardless of height
+        lastProcessedID = _redemptionIDs[_redemptionIDs.length - 1];
     }
 
     /// @custom:accesscontrol execution is limited to the MINTER_ROLE
@@ -224,14 +254,16 @@ contract itETH is OFT, AccessControl {
             pl.owner,
             pl.fulfilled
         );
-        if (filled) revert ErrorLib.Fulfilled(); /// @dev if fulfilled, revert
-        if (!(amt > 0)) revert ErrorLib.Zero(); /// @dev if the amount is not greater than 0, revert
+        /// @dev if fulfilled, revert
+        if (filled) revert ErrorLib.Fulfilled();
+        /// @dev if the amount is not greater than 0, revert
+        if (!(amt > 0)) revert ErrorLib.Zero();
         WETH.transferFrom(treasury, sendTo, amt);
         /// @dev set the payload values to 0/true;
         pl.amount = 0;
         pl.fulfilled = true;
-
-        emit EventLib.ProcessRedemption(_reqID, amt); /// @dev emit event for processing the request
+        /// @dev emit event for processing the request
+        emit EventLib.ProcessRedemption(_reqID, amt);
     }
 
     /// @dev revert on msg.value being delivered to the address w/o data
