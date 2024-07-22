@@ -77,9 +77,11 @@ contract itETH is OFT, AccessControl {
     /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
     function cook(uint256 _amount, address _referral) public WhileNotPaused {
         if (!(_amount > 0)) revert ErrorLib.Zero();
-        /// @dev if there is no bound referral
+        if (msg.sender == _referral) revert ErrorLib.SelfReferProhibited();
+
         address referral = referrals[msg.sender];
         if (referral == address(0)) {
+            /// @dev if there is no bound referral
             _referral == address(0) ? referral = treasury : referral = referral;
             referrals[msg.sender] = _referral;
             referral = _referral;

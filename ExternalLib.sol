@@ -14,6 +14,7 @@ library ErrorLib {
     error SwapFailed();
     error DivisorBelowMinimum();
     error DivisorAboveMinimum();
+    error SelfReferProhibited();
 }
 
 library EventLib {
