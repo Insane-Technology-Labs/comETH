@@ -128,7 +128,6 @@ contract itETH is OFT, AccessControl {
         }
 
         lastProcessedID = _redemptionIDs[_redemptionIDs.length - 1]; /// @dev stores the last processed ID regardless of height
-        highestProcessedID = _highestProcessedID;
     }
 
     /// @custom:accesscontrol execution is limited to the MINTER_ROLE
