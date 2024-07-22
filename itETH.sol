@@ -77,6 +77,7 @@ contract itETH is OFT, AccessControl {
     /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
     function cook(uint256 _amount, address _referral) public WhileNotPaused {
         if (!(_amount > 0)) revert ErrorLib.Zero();
+        /// @dev prohibit direct self refers
         if (msg.sender == _referral) revert ErrorLib.SelfReferProhibited();
 
         address referral = referrals[msg.sender];
@@ -86,7 +87,7 @@ contract itETH is OFT, AccessControl {
             referrals[msg.sender] = _referral;
             referral = _referral;
         }
-        WETH.transferFrom(msg.sender, treasury, _amount);
+        WETH.transferFrom(msg.sender, address(this), _amount);
         _mint(msg.sender, _amount);
         totalDepositedEther += _amount;
         emit EventLib.EtherDeposited(msg.sender, _amount); /// @dev emit the amount of eth deposited and by whom
@@ -180,6 +181,8 @@ contract itETH is OFT, AccessControl {
         for (uint256 i = 0; i < _tokensOut.length; ++i) {
             balanceBefore[i] = IERC20(_tokensOut[i]).balanceOf(treasury);
         }
+        /// @dev give swap approval to odos
+        WETH.approve(odos, WETH.balanceOf(address(this)));
 
         /// @dev ensure the swap succeeds
         (bool success, ) = odos.call(_odosCalldata);
