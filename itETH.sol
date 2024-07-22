@@ -21,7 +21,6 @@ contract itETH is OFT, AccessControl {
         bool fulfilled; /// @dev whether the request has been filled already or not
     }
     mapping(uint256 => RequestPayload) public payloads; /// @dev mapping for tracking requests
-    mapping(address => bool) public cooked; /// @dev mapping for tracking whether the user has deposited before
     mapping(address => address) public referrals; /// @dev mapping to track the referral status of users
     mapping(address => uint256) public earnedReferralPoints; /// @dev mapping that tracks the ref pts earned per user
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE"); /// @custom:accesscontrol Operator access control role
@@ -78,33 +77,30 @@ contract itETH is OFT, AccessControl {
     /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
     function cook(uint256 _amount, address _referral) public WhileNotPaused {
         if (!(_amount > 0)) revert ErrorLib.Zero();
-        address referral = _referral;
-        referral == address(0) ? referral = treasury : referral = referral;
+        /// @dev if there is no bound referral
+        address referral = referrals[msg.sender];
+        if (referral == address(0)) {
+            _referral == address(0) ? referral = treasury : referral = referral;
+            referrals[msg.sender] = _referral;
+            referral = _referral;
+        }
         WETH.transferFrom(msg.sender, treasury, _amount);
         _mint(msg.sender, _amount);
-        /// @dev if there is no bound referral
-        if (!cooked[msg.sender] && referrals[msg.sender] == address(0))
-            referrals[msg.sender] = referral;
         totalDepositedEther += _amount;
         emit EventLib.EtherDeposited(msg.sender, _amount); /// @dev emit the amount of eth deposited and by whom
-        cooked[msg.sender] = true; /// @dev state the user has deposited before
         /// @dev if it is above the min threshold
         if (_amount > minReq) {
             uint256 refPts = ((_amount * refDivisor) / REF_BASE); /// @dev refDivisor * amount of referral deposits are accounted to the referee
-            earnedReferralPoints[referrals[msg.sender]] += refPts;
+            earnedReferralPoints[referral] += refPts;
             totalReferralPoints += refPts;
-            emit EventLib.ReferralDeposit(
-                msg.sender,
-                referrals[msg.sender],
-                refPts
-            );
+            emit EventLib.ReferralDeposit(msg.sender, referral, refPts);
         }
     }
 
     /// @notice request redemption from the treasury
     /// @dev non-atomic redemption queue system
     /// @custom:accesscontrol this function is not limited to anyone, only the paused boolean
-    function requestRedemption(uint256 _amount) public WhileNotPaused {
+    function requestRedemption(uint256 _amount) external WhileNotPaused {
         if (_amount < minReq) revert ErrorLib.BelowMinimum();
         _burn(msg.sender, _amount);
         ++_requestCounter;
@@ -118,25 +114,28 @@ contract itETH is OFT, AccessControl {
         public
         onlyRole(OPERATOR_ROLE)
     {
+        uint256 _highestProcessedID = highestProcessedID;
         for (uint256 i = 0; i < _redemptionIDs.length; ++i) {
             _process(_redemptionIDs[i]);
+
+            /// @dev ternary operator for updating the highest processed request ID
+            if (_highestProcessedID < _redemptionIDs[i]) {
+                highestProcessedID = _redemptionIDs[i];
+            }
         }
+
+        lastProcessedID = _redemptionIDs[_redemptionIDs.length - 1]; /// @dev stores the last processed ID regardless of height
+        highestProcessedID = _highestProcessedID;
     }
 
     /// @custom:accesscontrol execution is limited to the MINTER_ROLE
-    function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) {
+    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
         _mint(to, amount);
-    }
-
-    /// @dev standard ERC-20 burn
-    /// @custom:accesscontrol this function is not limited to anyone
-    function burn(uint256 amount) public {
-        _burn(msg.sender, amount);
     }
 
     /// @custom:accesscontrol execution is limited to the DEFAULT_ADMIN_ROLE
     function setTreasury(address _treasury)
-        public
+        external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         treasury = _treasury;
@@ -145,7 +144,7 @@ contract itETH is OFT, AccessControl {
 
     /// @notice function to pause the printing of itETH
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
-    function setPaused(bool _status) public onlyRole(OPERATOR_ROLE) {
+    function setPaused(bool _status) external onlyRole(OPERATOR_ROLE) {
         if (paused == _status) revert ErrorLib.NoChangeInBoolean();
         paused = _status;
         emit EventLib.PausedContract(_status);
@@ -153,14 +152,14 @@ contract itETH is OFT, AccessControl {
 
     /// @notice set the minimum eth amount for redemptions
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
-    function setMinReq(uint256 _min) public onlyRole(OPERATOR_ROLE) {
+    function setMinReq(uint256 _min) external onlyRole(OPERATOR_ROLE) {
         minReq = _min;
         emit EventLib.MinReqSet(minReq);
     }
 
     /// @notice set the referral divisor
     /// @custom:accesscontrol execution is limited to the OPERATOR_ROLE
-    function setRefDivisor(uint256 _divisor) public onlyRole(OPERATOR_ROLE) {
+    function setRefDivisor(uint256 _divisor) external onlyRole(OPERATOR_ROLE) {
         if (refDivisor < 1e1) revert ErrorLib.DivisorBelowMinimum();
         if (refDivisor > REF_BASE) revert ErrorLib.DivisorAboveMinimum();
         refDivisor = _divisor;
@@ -173,7 +172,7 @@ contract itETH is OFT, AccessControl {
         address[] calldata _tokensOut,
         uint256[] calldata _minAmountsOut,
         bytes calldata _odosCalldata
-    ) public onlyRole(OPERATOR_ROLE) {
+    ) external onlyRole(OPERATOR_ROLE) {
         /// @dev define and map balances before the swap
         uint256[] memory balanceBefore = new uint256[](_tokensOut.length);
         for (uint256 i = 0; i < _tokensOut.length; ++i) {
@@ -209,6 +208,10 @@ contract itETH is OFT, AccessControl {
         return 18;
     }
 
+    function cooked(address user) external view returns (bool) {
+        return referrals[user] != address(0);
+    }
+
     /// @dev internal function to process each request
     function _process(uint256 _reqID) internal {
         RequestPayload storage pl = payloads[_reqID];
@@ -223,12 +226,6 @@ contract itETH is OFT, AccessControl {
         /// @dev set the payload values to 0/true;
         pl.amount = 0;
         pl.fulfilled = true;
-
-        lastProcessedID = _reqID; /// @dev stores the last processed ID regardless of height
-
-        highestProcessedID < _reqID /// @dev ternary operator for updating the highest processed request ID
-            ? highestProcessedID = _reqID
-            : highestProcessedID = highestProcessedID;
 
         emit EventLib.ProcessRedemption(_reqID, amt); /// @dev emit event for processing the request
     }
