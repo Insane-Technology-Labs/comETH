@@ -31,7 +31,7 @@ contract itETH is OFT, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     /// @notice multichain multisig address
-    address public constant TREASURY =
+    address public constant OPERATIONS =
         0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
     /// @notice WETH address on the chain
     IERC20 public immutable WETH;
@@ -57,16 +57,10 @@ contract itETH is OFT, AccessControl {
     /// @dev layerzero endpoint address and weth address on the chain
     constructor(
         address _endpoint,
-        address _weth,
-        address _odos
+        address _weth
     )
-        OFT(
-            "Insane Technology Ether",
-            "itETH",
-            _endpoint,
-            TREASURY
-        )
-        Ownable(TREASURY)
+        OFT("Insane Technology Ether", "itETH", _endpoint, OPERATIONS)
+        Ownable(OPERATIONS)
     {
         /// @dev iterative, start at 0
         _requestCounter = 0;
@@ -75,9 +69,9 @@ contract itETH is OFT, AccessControl {
         /// @dev initialize the WETH variable
         WETH = IERC20(_weth);
         /// @dev grant the appropriate roles to the treasury
-        _grantRole(DEFAULT_ADMIN_ROLE, TREASURY);
-        _grantRole(OPERATOR_ROLE, TREASURY);
-        _grantRole(MINTER_ROLE, TREASURY);
+        _grantRole(DEFAULT_ADMIN_ROLE, OPERATIONS);
+        _grantRole(OPERATOR_ROLE, OPERATIONS);
+        _grantRole(MINTER_ROLE, OPERATIONS);
         /// @dev grant roles to deployer for initial testing
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OPERATOR_ROLE, msg.sender);
@@ -171,7 +165,7 @@ contract itETH is OFT, AccessControl {
         require(!filled, ErrorLib.Fulfilled());
         /// @dev if the amount is not greater than 0, revert
         require(amt > 0, ErrorLib.Zero());
-        WETH.transferFrom(TREASURY, sendTo, amt);
+        WETH.transferFrom(OPERATIONS, sendTo, amt);
         /// @dev set the payload values to 0/true;
         pl.amount = 0;
         pl.fulfilled = true;
