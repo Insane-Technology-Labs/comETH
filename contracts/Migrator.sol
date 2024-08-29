@@ -8,8 +8,16 @@ contract Migrator {
 
     bool public paused;
 
+    address public constant OPERATIONS =
+        0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
+
     modifier whileNotPaused() {
         require(!paused, ErrorLib.Paused());
         _;
+    }
+
+    constructor(address _oldToken, address _newToken) {
+        oldToken = IERC20(_oldToken);
+        newToken = IERC20(_newToken);
     }
 }

@@ -19,6 +19,9 @@ contract INT is OFT, AccessControl {
 
     bool public paused;
 
+    address public constant OPERATIONS =
+        0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
+
     address public oldToken;
 
     /// @dev layerzero endpoint address
