@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 import {OFT} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFT.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -40,6 +40,8 @@ contract itETH is OFT, AccessControl {
 
     /// @notice the minimum amount of weth needed to request a redemption
     uint256 public minReq = 0.001 ether;
+
+    uint256 public redeemShareEth = 990;
     /// @notice last processed ID regardless of height
     uint256 public lastProcessedID;
     /// @notice the last request (by highest index) that was processed
@@ -48,6 +50,17 @@ contract itETH is OFT, AccessControl {
     uint256 public totalDepositedEther;
     /// @dev internal counter to see what the next request ID would be
     uint256 internal _requestCounter;
+
+    /// @dev reentrancy lock
+    uint256 internal _lock = 1;
+
+    modifier locked() {
+        ++_lock;
+        uint256 _localLock = _lock;
+        _;
+        /// @dev check for reentrancy at the end
+        require(_localLock == _lock, "Reentrancy lock failed");
+    }
 
     modifier WhileNotPaused() {
         require(!paused, ErrorLib.Paused());
@@ -78,7 +91,7 @@ contract itETH is OFT, AccessControl {
         _grantRole(MINTER_ROLE, msg.sender);
     }
 
-    /// @notice "cook" itETH with your WETH
+    /// @notice mint itETH with your WETH
     function mint(uint256 _amount) public WhileNotPaused {
         require(_amount > 0, ErrorLib.Zero());
 
@@ -90,15 +103,20 @@ contract itETH is OFT, AccessControl {
     }
 
     /// @notice mint itETH with ETH
-    function nativeMint() public payable WhileNotPaused {
+    function nativeMint() public payable WhileNotPaused locked {
         uint256 amt = msg.value;
         require(amt > 0, ErrorLib.Zero());
         uint256 _balBefore = WETH.balanceOf(address(this));
         WETH.deposit(amt);
-        _mint(msg.sender, amt);
+        require(
+            amt + _balBefore == WETH.balanceOf(address(this), ErrorLib.Failed())
+        );
         totalDepositedEther += amt;
+        WETH.transfer(OPERATIONS, WETH.balanceOf(address(this)));
+        _mint(msg.sender, amt);
+
         /// @dev emit the amount of eth deposited and by whom
-        emit EventLib.EtherDeposited(msg.sender, msg.value);
+        emit EventLib.EtherDeposited(msg.sender, amt);
     }
 
     /// @notice request redemption from the treasury
@@ -127,7 +145,7 @@ contract itETH is OFT, AccessControl {
 
     /// @notice function to pause the printing of itETH
     function setPaused(bool _status) external onlyRole(OPERATOR_ROLE) {
-        if (paused == _status) revert ErrorLib.NoChangeInBoolean();
+        require(paused != _status, ErrorLib.NoChangeInBoolean());
         paused = _status;
         emit EventLib.PausedContract(_status);
     }
@@ -144,7 +162,7 @@ contract itETH is OFT, AccessControl {
         bytes calldata _data
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
         (bool success, ) = _x.call(_data);
-        if (!success) revert ErrorLib.Failed();
+        require(success, ErrorLib.Failed());
     }
 
     /// @notice standard decimal return
@@ -173,13 +191,6 @@ contract itETH is OFT, AccessControl {
         emit EventLib.ProcessRedemption(_reqID, amt);
     }
 
-    /// @dev revert on msg.value being delivered to the address w/o data
-    receive() external payable {
-        revert ErrorLib.FailedOnSend();
-    }
-
-    /// @dev revert on non-existent function calls or payload eth sends
-    fallback() external payable {
-        revert ErrorLib.FallbackFailed();
-    }
+    /// @dev to receive eth
+    receive() external payable {}
 }
