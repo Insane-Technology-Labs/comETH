@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import "./ExternalLib.sol";
+import {ErrorLib} from "./ExternalLib.sol";
 contract Migrator {
     IERC20 public oldToken;
     IERC20 public newToken;
@@ -11,7 +11,7 @@ contract Migrator {
     address public constant OPERATIONS =
         0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
 
-    modifier whileNotPaused() {
+    modifier WhileNotPaused() {
         require(!paused, ErrorLib.Paused());
         _;
     }

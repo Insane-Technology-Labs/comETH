@@ -25,9 +25,9 @@ contract itETH is OFT, AccessControl {
     /// @dev mapping for tracking requests
     mapping(uint256 => RequestPayload) public payloads;
 
-    /// @custom:accesscontrol Operator access control role
+    /// @notice Operator access control role
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    /// @custom:accesscontrol Minter access control role
+    /// @notice Minter access control role
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     /// @notice multichain multisig address
