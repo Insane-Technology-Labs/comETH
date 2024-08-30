@@ -58,8 +58,10 @@ contract itETH is OFT, AccessControl {
         ++_lock;
         uint256 _localLock = _lock;
         _;
-        /// @dev check for reentrancy at the end
-        require(_localLock == _lock, "Reentrancy lock failed");
+        if (_localLock != _lock) {
+            revert("reentrant cope");
+        }
+        _lock = 1;
     }
 
     modifier WhileNotPaused() {
