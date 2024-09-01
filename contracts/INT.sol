@@ -7,6 +7,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @dev import external libraries for error and event handling
 /// @dev implements ErrorLib & EventLib
 import {ErrorLib} from "./ExternalLib.sol";
+
 contract INT is OFT, AccessControl {
     /// @notice Minter access control role
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
@@ -25,19 +26,19 @@ contract INT is OFT, AccessControl {
         /// @dev grant roles to deployer for initial testing
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
-        _grantRole(PAUSER_ROLE, msg.sender);
     }
 
     /// @notice mint function used by the migrator and the fractional portions of IT tokens
     function mint(address _dst, uint256 _amt) external onlyRole(MINTER_ROLE) {
         _mint(_dst, _amt);
     }
+
     /// @notice burn function used by the fractional portions of IT tokens
     function burnFrom(
         address _frm,
         uint256 _amt
     ) external onlyRole(BURNER_ROLE) {
-        _burn(_from, _amt);
+        _burn(_frm, _amt);
     }
 
     /// @notice standard decimal return

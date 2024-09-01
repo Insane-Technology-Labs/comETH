@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {INT} from "./INT.sol";
+import {ErrorLib} from "./ExternalLib.sol";
+
+interface INT is IERC20 {
+    function burn(uint256) external;
+
+    function mint(address, uint256) external;
+
+    function renounceRole(bytes32, address) external;
+}
+
 contract Migrator {
     IERC20 public oldToken;
     INT public newToken;
@@ -27,17 +36,26 @@ contract Migrator {
 
     /// @notice migrate ITX --> INT at 1 per 10m
     function migrate(uint256 _amount) external {
-        /// @dev 100 cap as that was ITX total supply
+        /// @dev 100 cap which is the ITX total supply
         require(totalItxMigrated + _amount <= 100, ErrorLib.Failed());
+        /// @dev collect the user's tokens
         oldToken.transferFrom(msg.sender, address(this), _amount);
-        oldToken.burn(_amount);
+        /// @dev cast as INT to call burn
+        INT(address(oldToken)).burn(_amount);
+        /// @dev update accounting
         totalItxMigrated += _amount;
         amountMigrated[msg.sender] += _amount;
+        /// @dev calculate INT amount
         uint256 newAmount = _amount * SPLIT;
-        INT.mint(msg.sender, newAmount);
+        /// @dev mint the INT to the user
+        newToken.mint(msg.sender, newAmount);
         emit Migrated(msg.sender, _amount, newAmount);
+        /// @dev if the total amount migrated is at 100, prevent from minting INT again
         if (totalItxMigrated == 100) {
-            INT.renounceRole(bytes32(keccak256("MINTER_ROLE")), address(this));
+            newToken.renounceRole(
+                bytes32(keccak256("MINTER_ROLE")),
+                address(this)
+            );
         }
     }
 

@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {OFT} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFT.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 /// @dev import external libraries for error and event handling
 /// @dev implements ErrorLib & EventLib
 import "./ExternalLib.sol";
 
-contract itETH is OFT, AccessControl {
+contract itETH is OFT, AccessControl, ReentrancyGuard {
     /// @title Insane Technology Ether (itETH)
     /// @author Insane Technology
     /// @custom:description ether wrapper which deposits into various strategies and passes yield through
@@ -34,12 +37,12 @@ contract itETH is OFT, AccessControl {
     address public constant OPERATIONS =
         0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
     /// @notice WETH address on the chain
-    IERC20 public immutable WETH;
+    IWETH public immutable WETH;
     /// @notice whether mint/redeem functionality are paused
     bool public paused;
 
     /// @notice the minimum amount of weth needed to request a redemption
-    uint256 public minReq = 0.001 ether;
+    uint256 public minReq = 1e18 / 1000;
 
     uint256 public redeemShareEth = 990;
     /// @notice last processed ID regardless of height
@@ -51,19 +54,6 @@ contract itETH is OFT, AccessControl {
     /// @dev internal counter to see what the next request ID would be
     uint256 internal _requestCounter;
 
-    /// @dev reentrancy lock
-    uint256 internal _lock = 1;
-
-    modifier locked() {
-        ++_lock;
-        uint256 _localLock = _lock;
-        _;
-        if (_localLock != _lock) {
-            revert("reentrant cope");
-        }
-        _lock = 1;
-    }
-
     modifier WhileNotPaused() {
         require(!paused, ErrorLib.Paused());
         _;
@@ -73,16 +63,13 @@ contract itETH is OFT, AccessControl {
     constructor(
         address _endpoint,
         address _weth
-    )
-        OFT("Insane Technology Ether", "itETH", _endpoint, OPERATIONS)
-        Ownable(OPERATIONS)
-    {
+    ) OFT("Insane Ether", "itETH", _endpoint, OPERATIONS) Ownable(OPERATIONS) {
         /// @dev iterative, start at 0
         _requestCounter = 0;
         /// @dev paused by default
         paused = true;
         /// @dev initialize the WETH variable
-        WETH = IERC20(_weth);
+        WETH = IWETH(_weth);
         /// @dev grant the appropriate roles to the treasury
         _grantRole(DEFAULT_ADMIN_ROLE, OPERATIONS);
         _grantRole(OPERATOR_ROLE, OPERATIONS);
@@ -101,24 +88,24 @@ contract itETH is OFT, AccessControl {
         _mint(msg.sender, _amount);
         totalDepositedEther += _amount;
         /// @dev emit the amount of eth deposited and by whom
-        emit EventLib.EtherDeposited(msg.sender, _amount);
+        emit EventLib.Minted(msg.sender, _amount);
     }
 
     /// @notice mint itETH with ETH
-    function nativeMint() public payable WhileNotPaused locked {
+    function nativeMint() public payable WhileNotPaused nonReentrant {
         uint256 amt = msg.value;
         require(amt > 0, ErrorLib.Zero());
         uint256 _balBefore = WETH.balanceOf(address(this));
-        WETH.deposit(amt);
+        WETH.deposit{value: amt};
         require(
-            amt + _balBefore == WETH.balanceOf(address(this), ErrorLib.Failed())
+            (amt + _balBefore) == WETH.balanceOf(address(this)),
+            ErrorLib.Failed()
         );
-        totalDepositedEther += amt;
         WETH.transfer(OPERATIONS, WETH.balanceOf(address(this)));
         _mint(msg.sender, amt);
 
         /// @dev emit the amount of eth deposited and by whom
-        emit EventLib.EtherDeposited(msg.sender, amt);
+        emit EventLib.Minted(msg.sender, amt);
     }
 
     /// @notice request redemption from the treasury
@@ -145,7 +132,7 @@ contract itETH is OFT, AccessControl {
         lastProcessedID = _redemptionIDs[_redemptionIDs.length - 1];
     }
 
-    /// @notice function to pause the printing of itETH
+    /// @notice function to pause the minting of itETH
     function setPaused(bool _status) external onlyRole(OPERATOR_ROLE) {
         require(paused != _status, ErrorLib.NoChangeInBoolean());
         paused = _status;
@@ -184,11 +171,12 @@ contract itETH is OFT, AccessControl {
         /// @dev if fulfilled, revert
         require(!filled, ErrorLib.Fulfilled());
         /// @dev if the amount is not greater than 0, revert
+        /// @dev this should never trigger as there is a check in the request functionality
         require(amt > 0, ErrorLib.Zero());
-        WETH.transferFrom(OPERATIONS, sendTo, amt);
         /// @dev set the payload values to 0/true;
-        pl.amount = 0;
-        pl.fulfilled = true;
+        (pl.amount, pl.fulfilled) = (0, true);
+        WETH.transferFrom(OPERATIONS, sendTo, ((amt * redeemShareEth) / 1000));
+
         /// @dev emit event for processing the request
         emit EventLib.ProcessRedemption(_reqID, amt);
     }
