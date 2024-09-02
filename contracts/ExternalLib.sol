@@ -18,7 +18,7 @@ library ErrorLib {
 }
 
 library EventLib {
-    event Cooked(address indexed user, uint256 indexed amount);
+    event Minted(address indexed user, uint256 indexed amount);
     event RequestRedemption(address indexed user, uint256 indexed amount);
     event ProcessRedemption(uint256 indexed requestID, uint256 indexed amount);
     event ReferralDeposit(
@@ -27,8 +27,5 @@ library EventLib {
         uint256 indexed amountRefExtra
     );
     event PausedContract(bool indexed status);
-    event TreasurySet(address indexed treasury);
     event MinReqSet(uint256 indexed minReq);
-    event RefDivisorSet(uint256 indexed refDivisor);
-    event EtherDeposited(address indexed depositor, uint256 indexed amount);
 }
