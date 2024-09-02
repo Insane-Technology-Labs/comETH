@@ -1,3 +1,6 @@
+
+How to install all dependencies of this project:
+
 ### install LayerZero with NPM
 `npm install @layerzerolabs/lz-evm-oapp-v2 @layerzerolabs/lz-evm-protocol-v2`
 
