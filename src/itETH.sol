@@ -10,8 +10,9 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @dev import external libraries for error and event handling
 /// @dev implements ErrorLib & EventLib
 import "./ExternalLib.sol";
+import "./Bribable.sol";
 
-contract itETH is OFT, AccessControl, ReentrancyGuard {
+contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @title Insane Technology Ether (itETH)
     /// @author Insane Technology
     /// @custom:description ether wrapper which deposits into various strategies and passes yield through
@@ -33,11 +34,10 @@ contract itETH is OFT, AccessControl, ReentrancyGuard {
     /// @notice Minter access control role
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
-    /// @notice multichain multisig address
-    address public constant OPERATIONS =
-        0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
     /// @notice WETH address on the chain
     IWETH public immutable WETH;
+    /// @notice erc20 form of weth
+    IERC20 public ercWETH;
     /// @notice whether mint/redeem functionality are paused
     bool public paused;
 
@@ -70,6 +70,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard {
         paused = true;
         /// @dev initialize the WETH variable
         WETH = IWETH(_weth);
+        ercWETH = IERC20(_weth);
         /// @dev grant the appropriate roles to the treasury
         _grantRole(DEFAULT_ADMIN_ROLE, OPERATIONS);
         _grantRole(OPERATOR_ROLE, OPERATIONS);
@@ -84,7 +85,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard {
     function mint(uint256 _amount) public WhileNotPaused {
         require(_amount > 0, ErrorLib.Zero());
 
-        WETH.transferFrom(msg.sender, address(this), _amount);
+        ercWETH.transferFrom(msg.sender, address(this), _amount);
         _mint(msg.sender, _amount);
         totalDepositedEther += _amount;
         /// @dev emit the amount of eth deposited and by whom
@@ -95,13 +96,13 @@ contract itETH is OFT, AccessControl, ReentrancyGuard {
     function nativeMint() public payable WhileNotPaused nonReentrant {
         uint256 amt = msg.value;
         require(amt > 0, ErrorLib.Zero());
-        uint256 _balBefore = WETH.balanceOf(address(this));
+        uint256 _balBefore = ercWETH.balanceOf(address(this));
         WETH.deposit{value: amt};
         require(
-            (amt + _balBefore) == WETH.balanceOf(address(this)),
+            (amt + _balBefore) == ercWETH.balanceOf(address(this)),
             ErrorLib.Failed()
         );
-        WETH.transfer(OPERATIONS, WETH.balanceOf(address(this)));
+        ercWETH.transfer(OPERATIONS, ercWETH.balanceOf(address(this)));
         _mint(msg.sender, amt);
 
         /// @dev emit the amount of eth deposited and by whom
@@ -175,7 +176,11 @@ contract itETH is OFT, AccessControl, ReentrancyGuard {
         require(amt > 0, ErrorLib.Zero());
         /// @dev set the payload values to 0/true;
         (pl.amount, pl.fulfilled) = (0, true);
-        WETH.transferFrom(OPERATIONS, sendTo, ((amt * redeemShareEth) / 1000));
+        ercWETH.transferFrom(
+            OPERATIONS,
+            sendTo,
+            ((amt * redeemShareEth) / 1000)
+        );
 
         /// @dev emit event for processing the request
         emit EventLib.ProcessRedemption(_reqID, amt);
