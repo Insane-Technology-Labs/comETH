@@ -7,8 +7,6 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-/// @dev import external libraries for error and event handling
-/// @dev implements ErrorLib & EventLib
 import {ErrorLib, EventLib} from "./ExternalLib.sol";
 import {Bribable} from "./Bribable.sol";
 
@@ -30,8 +28,6 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     bool public paused;
 
     uint256 public redeemShareEth = 995;
-    /// @notice total deposits ever
-    uint256 public totalDepositedEther;
 
     modifier WhileNotPaused() {
         require(!paused, ErrorLib.Paused());
@@ -60,7 +56,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
 
         ercWETH.transferFrom(msg.sender, address(this), _amount);
         _mint(msg.sender, _amount);
-        totalDepositedEther += _amount;
+
         /// @dev emit the amount of eth deposited and by whom
         emit EventLib.Minted(msg.sender, _amount);
     }
@@ -84,13 +80,18 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         emit EventLib.Minted(msg.sender, amt);
     }
 
-    /// @notice request redemption from the treasury
+    /// @notice redeem the underlying tokens
+    /// @param _amount the amount of tokens to redeem
     function redeemTokens(
         uint256 _amount
     ) external WhileNotPaused nonReentrant {
         require(_amount > 0, ErrorLib.BelowMinimum());
         _burn(msg.sender, _amount);
-        aavePool.withdraw(address(WETH), _amount, msg.sender);
+        uint256 received = ((_amount * redeemShareEth) / 1000);
+        /// @dev send underlying to user
+        aavePool.withdraw(address(WETH), received, msg.sender);
+        /// @dev send fee to operations
+        aavePool.withdraw(address(WETH), (_amount - received), OPERATIONS);
         emit EventLib.Redemption(msg.sender, _amount);
     }
 
@@ -99,6 +100,15 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         require(paused != _status, ErrorLib.NoChangeInBoolean());
         paused = _status;
         emit EventLib.PausedContract(_status);
+    }
+
+    /// @notice adjust the redeem values, between 0% and 1%
+    function setRedeemValues(
+        uint256 _newValue
+    ) external onlyOperator(OPERATOR_ROLE) {
+        /// @dev fee cannot be greater than 1% or less than 0%
+        require(_newValue >= 990 && _newValue <= 1000, ErrorLib.DivisorError());
+        redeemShareEth = _newValue;
     }
 
     /// @notice arbitrary call
