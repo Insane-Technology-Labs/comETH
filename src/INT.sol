@@ -11,9 +11,6 @@ import {ErrorLib} from "./ExternalLib.sol";
 contract INT is OFT, AccessControl {
     /// @notice Minter access control role
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    /// @notice Burning access control
-    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
-
     address public constant OPERATIONS =
         0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
 
@@ -28,17 +25,9 @@ contract INT is OFT, AccessControl {
         _grantRole(MINTER_ROLE, msg.sender);
     }
 
-    /// @notice mint function used by the migrator and the fractional portions of IT tokens
+    /// @notice mint function used by the migrator
     function mint(address _dst, uint256 _amt) external onlyRole(MINTER_ROLE) {
         _mint(_dst, _amt);
-    }
-
-    /// @notice burn function used by the fractional portions of IT tokens
-    function burnFrom(
-        address _frm,
-        uint256 _amt
-    ) external onlyRole(BURNER_ROLE) {
-        _burn(_frm, _amt);
     }
 
     /// @notice standard decimal return

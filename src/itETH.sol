@@ -105,7 +105,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @notice adjust the redeem values, between 0% and 1%
     function setRedeemValues(
         uint256 _newValue
-    ) external onlyOperator(OPERATOR_ROLE) {
+    ) external onlyRole(OPERATOR_ROLE) {
         /// @dev fee cannot be greater than 1% or less than 0%
         require(_newValue >= 990 && _newValue <= 1000, ErrorLib.DivisorError());
         redeemShareEth = _newValue;
