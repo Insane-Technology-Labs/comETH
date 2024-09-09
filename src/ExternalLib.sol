@@ -19,13 +19,6 @@ library ErrorLib {
 
 library EventLib {
     event Minted(address indexed user, uint256 indexed amount);
-    event RequestRedemption(address indexed user, uint256 indexed amount);
-    event ProcessRedemption(uint256 indexed requestID, uint256 indexed amount);
-    event ReferralDeposit(
-        address indexed victim,
-        address indexed referrer,
-        uint256 indexed amountRefExtra
-    );
+    event Redemption(address indexed user, uint256 indexed amount);
     event PausedContract(bool indexed status);
-    event MinReqSet(uint256 indexed minReq);
 }

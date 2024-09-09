@@ -9,25 +9,13 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 /// @dev import external libraries for error and event handling
 /// @dev implements ErrorLib & EventLib
-import "./ExternalLib.sol";
-import "./Bribable.sol";
+import {ErrorLib, EventLib} from "./ExternalLib.sol";
+import {Bribable} from "./Bribable.sol";
 
 contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @title Insane Technology Ether (itETH)
     /// @author Insane Technology
     /// @custom:description ether wrapper which deposits into various strategies and passes yield through
-
-    /// @dev struct that holds the request payloads
-    struct RequestPayload {
-        /// @dev owner of the request
-        address owner;
-        /// @dev the amount of itETH requested for withdrawal
-        uint256 amount;
-        /// @dev whether the request has been filled already or not
-        bool fulfilled;
-    }
-    /// @dev mapping for tracking requests
-    mapping(uint256 => RequestPayload) public payloads;
 
     /// @notice Operator access control role
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
@@ -41,18 +29,9 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @notice whether mint/redeem functionality are paused
     bool public paused;
 
-    /// @notice the minimum amount of weth needed to request a redemption
-    uint256 public minReq = 1e18 / 1000;
-
-    uint256 public redeemShareEth = 990;
-    /// @notice last processed ID regardless of height
-    uint256 public lastProcessedID;
-    /// @notice the last request (by highest index) that was processed
-    uint256 public highestProcessedID;
+    uint256 public redeemShareEth = 995;
     /// @notice total deposits ever
     uint256 public totalDepositedEther;
-    /// @dev internal counter to see what the next request ID would be
-    uint256 internal _requestCounter;
 
     modifier WhileNotPaused() {
         require(!paused, ErrorLib.Paused());
@@ -64,21 +43,15 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         address _endpoint,
         address _weth
     ) OFT("Insane Ether", "itETH", _endpoint, OPERATIONS) Ownable(OPERATIONS) {
-        /// @dev iterative, start at 0
-        _requestCounter = 0;
         /// @dev paused by default
         paused = true;
-        /// @dev initialize the WETH variable
-        WETH = IWETH(_weth);
-        ercWETH = IERC20(_weth);
+        /// @dev initialize the WETH variables
+        (WETH, ercWETH) = (IWETH(_weth), IERC20(_weth));
         /// @dev grant the appropriate roles to the treasury
         _grantRole(DEFAULT_ADMIN_ROLE, OPERATIONS);
         _grantRole(OPERATOR_ROLE, OPERATIONS);
-        _grantRole(MINTER_ROLE, OPERATIONS);
-        /// @dev grant roles to deployer for initial testing
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        /// @dev grant role to deployer for initial testing
         _grantRole(OPERATOR_ROLE, msg.sender);
-        _grantRole(MINTER_ROLE, msg.sender);
     }
 
     /// @notice mint itETH with your WETH
@@ -102,7 +75,9 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
             (amt + _balBefore) == ercWETH.balanceOf(address(this)),
             ErrorLib.Failed()
         );
-        ercWETH.transfer(OPERATIONS, ercWETH.balanceOf(address(this)));
+        /// @dev take the ETH and deposit to the aave pool
+        wtg.depositETH(address(aavePool), address(this), 0);
+        /// @dev mint the reciept token
         _mint(msg.sender, amt);
 
         /// @dev emit the amount of eth deposited and by whom
@@ -110,27 +85,13 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     }
 
     /// @notice request redemption from the treasury
-    function requestRedemption(uint256 _amount) external WhileNotPaused {
-        require(_amount >= minReq, ErrorLib.BelowMinimum());
+    function redeemTokens(
+        uint256 _amount
+    ) external WhileNotPaused nonReentrant {
+        require(_amount > 0, ErrorLib.BelowMinimum());
         _burn(msg.sender, _amount);
-        ++_requestCounter;
-        payloads[_requestCounter] = RequestPayload(msg.sender, _amount, false);
-        emit EventLib.RequestRedemption(msg.sender, _amount);
-    }
-
-    /// @notice process a batch of redeem requests
-    function processRedemptions(
-        uint256[] calldata _redemptionIDs
-    ) external onlyRole(OPERATOR_ROLE) {
-        uint256 _highestProcessedID = highestProcessedID;
-        for (uint256 i = 0; i < _redemptionIDs.length; ++i) {
-            _process(_redemptionIDs[i]);
-            if (_highestProcessedID < _redemptionIDs[i]) {
-                highestProcessedID = _redemptionIDs[i];
-            }
-        }
-        /// @dev stores the last processed ID regardless of height
-        lastProcessedID = _redemptionIDs[_redemptionIDs.length - 1];
+        aavePool.withdraw(address(WETH), _amount, msg.sender);
+        emit EventLib.Redemption(msg.sender, _amount);
     }
 
     /// @notice function to pause the minting of itETH
@@ -138,12 +99,6 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         require(paused != _status, ErrorLib.NoChangeInBoolean());
         paused = _status;
         emit EventLib.PausedContract(_status);
-    }
-
-    /// @notice set the minimum eth amount for redemptions
-    function setMinReq(uint256 _min) external onlyRole(OPERATOR_ROLE) {
-        minReq = _min;
-        emit EventLib.MinReqSet(minReq);
     }
 
     /// @notice arbitrary call
@@ -159,31 +114,6 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @return uint8 decimals
     function decimals() public pure override returns (uint8) {
         return 18;
-    }
-
-    /// @dev internal function to process each request
-    function _process(uint256 _reqID) internal {
-        RequestPayload storage pl = payloads[_reqID];
-        (uint256 amt, address sendTo, bool filled) = (
-            pl.amount,
-            pl.owner,
-            pl.fulfilled
-        );
-        /// @dev if fulfilled, revert
-        require(!filled, ErrorLib.Fulfilled());
-        /// @dev if the amount is not greater than 0, revert
-        /// @dev this should never trigger as there is a check in the request functionality
-        require(amt > 0, ErrorLib.Zero());
-        /// @dev set the payload values to 0/true;
-        (pl.amount, pl.fulfilled) = (0, true);
-        ercWETH.transferFrom(
-            OPERATIONS,
-            sendTo,
-            ((amt * redeemShareEth) / 1000)
-        );
-
-        /// @dev emit event for processing the request
-        emit EventLib.ProcessRedemption(_reqID, amt);
     }
 
     /// @dev to receive eth
