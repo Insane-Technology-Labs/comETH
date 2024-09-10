@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ErrorLib} from "./ExternalLib.sol";
 
-interface INT is IERC20 {
+interface ASTRO is IERC20 {
     function burn(uint256) external;
 
     function mint(address, uint256) external;
@@ -13,7 +13,7 @@ interface INT is IERC20 {
 
 contract Migrator {
     IERC20 public oldToken;
-    INT public newToken;
+    ASTRO public newToken;
     address public constant OPERATIONS =
         0xBFc57B070b1EDA0FCb9c203EDc1085c626F3A36d;
 
@@ -45,16 +45,16 @@ contract Migrator {
         /// @dev collect the user's tokens
         oldToken.transferFrom(msg.sender, address(this), _amount);
         /// @dev cast as INT to call burn
-        INT(address(oldToken)).burn(_amount);
+        ASTRO(address(oldToken)).burn(_amount);
         /// @dev update accounting
         totalItxMigrated += _amount;
         amountMigrated[msg.sender] += _amount;
-        /// @dev calculate INT amount
+        /// @dev calculate ASTRO amount
         uint256 newAmount = _amount * SPLIT;
-        /// @dev mint the INT to the user
+        /// @dev mint the ASTRO to the user
         newToken.mint(msg.sender, newAmount);
         emit Migrated(msg.sender, _amount, newAmount);
-        /// @dev if the total amount migrated is at 100, prevent from minting INT again
+        /// @dev if the total amount migrated is at 100, prevent from minting ASTRO again
         if (totalItxMigrated >= 100) {
             newToken.renounceRole(
                 bytes32(keccak256("MINTER_ROLE")),
@@ -65,6 +65,7 @@ contract Migrator {
     }
 
     /// @notice in case of stuck funds, return to OPERATIONS msig to be redistributed
+    /// @param _token the token to rescue
     function rescue(address _token) external {
         require(msg.sender == OPERATIONS, ErrorLib.Failed());
         IERC20(_token).transfer(

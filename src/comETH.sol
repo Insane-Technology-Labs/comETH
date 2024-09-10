@@ -10,10 +10,10 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {ErrorLib, EventLib} from "./ExternalLib.sol";
 import {Bribable} from "./Bribable.sol";
 
-contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
-    /// @title Insane Technology Ether (itETH)
-    /// @author Insane Technology
-    /// @custom:description ether wrapper which deposits into various strategies and passes yield through
+contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
+    /// @title Astro Ether (comETH)
+    /// @author Astro
+    /// @custom:description ether wrapper which passes down yield
 
     /// @notice Operator access control role
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
@@ -38,7 +38,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     constructor(
         address _endpoint,
         address _weth
-    ) OFT("Insane Ether", "itETH", _endpoint, OPERATIONS) Ownable(OPERATIONS) {
+    ) OFT("Astro Ether", "comETH", _endpoint, OPERATIONS) Ownable(OPERATIONS) {
         /// @dev paused by default
         paused = true;
         /// @dev initialize the WETH variables
@@ -50,7 +50,8 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         _grantRole(OPERATOR_ROLE, msg.sender);
     }
 
-    /// @notice mint itETH with your WETH
+    /// @notice mint comETH with your WETH
+    /// @param _amount the amount of WETH to deposit
     function mint(uint256 _amount) public WhileNotPaused {
         require(_amount > 0, ErrorLib.Zero());
 
@@ -61,7 +62,8 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         emit EventLib.Minted(msg.sender, _amount);
     }
 
-    /// @notice mint itETH with ETH
+    /// @notice mint comETH with ETH
+    /// @dev accepts msg.value
     function nativeMint() public payable WhileNotPaused nonReentrant {
         uint256 amt = msg.value;
         require(amt > 0, ErrorLib.Zero());
@@ -72,7 +74,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
             ErrorLib.Failed()
         );
         /// @dev take the ETH and deposit to the aave pool
-        wtg.depositETH(address(aavePool), address(this), 0);
+        wtg.depositETH(address(aavePool), address(this), 0 /* Zero ref code */);
         /// @dev mint the reciept token
         _mint(msg.sender, amt);
 
@@ -95,7 +97,8 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         emit EventLib.Redemption(msg.sender, _amount);
     }
 
-    /// @notice function to pause the minting of itETH
+    /// @notice function to pause the minting of comETH
+    /// @param _status t/f
     function setPaused(bool _status) external onlyRole(OPERATOR_ROLE) {
         require(paused != _status, ErrorLib.NoChangeInBoolean());
         paused = _status;
@@ -103,6 +106,7 @@ contract itETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     }
 
     /// @notice adjust the redeem values, between 0% and 1%
+    /// @param _newValue the new redemption value
     function setRedeemValues(
         uint256 _newValue
     ) external onlyRole(OPERATOR_ROLE) {
