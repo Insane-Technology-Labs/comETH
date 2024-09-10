@@ -32,7 +32,7 @@ contract Migrator {
 
     constructor(address _oldToken, address _newToken) {
         oldToken = IERC20(_oldToken);
-        newToken = INT(_newToken);
+        newToken = ASTRO(_newToken);
         totalItxMigrated = 0;
         migrationPaused = false;
     }

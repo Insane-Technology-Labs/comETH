@@ -26,7 +26,7 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     IERC20 public ercWETH;
     /// @notice whether mint/redeem functionality are paused
     bool public paused;
-
+    /// @notice ratio of ETH redeemed per 1 comETH (1000 = 100%)
     uint256 public redeemShareEth = 995;
 
     modifier WhileNotPaused() {

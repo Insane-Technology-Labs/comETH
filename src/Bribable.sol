@@ -51,6 +51,8 @@ contract Bribable {
     }
 
     /// @notice function to change the share %s
+    /// @param _shareU share of incentives to users
+    /// @param _shareT share of incentives to operations/token holders
     function changeShares(
         uint256 _shareU,
         uint256 _shareT
@@ -80,13 +82,14 @@ contract Bribable {
         if (autoRewarder) {
             /// @dev lp bribe next epoch
             underlying.approve(address(incentivesRecipient), difU);
-            incentivesRecipient.notifyRewardAmountNext(
+            /// @dev LP bribe next epoch
+            incentivesRecipient.notifyRewardAmountNextPeriod(
                 address(underlying),
                 difU
             );
         } else {
             /// @dev send difU to operations for processing
-            IERC20(address(aToken)).transfer(OPERATIONS, difU);
+            aToken.transfer(OPERATIONS, difU);
         }
     }
 }
