@@ -52,7 +52,7 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
 
     /// @notice mint comETH with your WETH
     /// @param _amount the amount of WETH to deposit
-    function mint(uint256 _amount) public WhileNotPaused {
+    function mint(uint256 _amount) public WhileNotPaused nonReentrant {
         require(_amount > 0, ErrorLib.Zero());
 
         ercWETH.transferFrom(msg.sender, address(this), _amount);
