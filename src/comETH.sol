@@ -17,17 +17,23 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
 
     /// @notice Operator access control role
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    /// @notice Minter access control role
-    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+
+    /// @notice the divisor for all mathematical operations involving multiplication
+    uint256 public constant DIVISOR = 1000;
 
     /// @notice WETH address on the chain
     IWETH public immutable WETH;
+
     /// @notice erc20 form of weth
     IERC20 public ercWETH;
+
     /// @notice whether mint/redeem functionality are paused
     bool public paused;
+
     /// @notice ratio of ETH redeemed per 1 comETH (1000 = 100%)
     uint256 public redeemShareEth = 995;
+    /// @notice percentage of eth kept in aave for redemptions. 1000 = 100%
+    uint256 public reserveFactor = 250;
 
     modifier WhileNotPaused() {
         require(!paused, ErrorLib.Paused());
@@ -54,8 +60,23 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @param _amount the amount of WETH to deposit
     function mint(uint256 _amount) public WhileNotPaused nonReentrant {
         require(_amount > 0, ErrorLib.Zero());
-
+        /// @dev accept weth from user
         ercWETH.transferFrom(msg.sender, address(this), _amount);
+        WETH.withdraw(_amount);
+        /// @dev take the ETH and deposit to the aave pool
+        wtg.depositETH(
+            address(aavePool),
+            address(this),
+            0 /* zero as ref code */
+        );
+        aToken.transfer(
+            OPERATIONS,
+            ((_amount *
+                (DIVISOR -
+                    reserveFactor)) /* calculates the percentage not used in reserves */ /
+                DIVISOR)
+        );
+        /// @dev mint the comETH to the user
         _mint(msg.sender, _amount);
 
         /// @dev emit the amount of eth deposited and by whom
@@ -65,16 +86,21 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @notice mint comETH with ETH
     /// @dev accepts msg.value
     function nativeMint() public payable WhileNotPaused nonReentrant {
+        /// @dev check ETH sent
         uint256 amt = msg.value;
+        /// @dev ensure eth is greater than 0
         require(amt > 0, ErrorLib.Zero());
+        /// @dev 'snapshot' balance of weth before
         uint256 _balBefore = ercWETH.balanceOf(address(this));
+        /// @dev deposit eth to weth
         WETH.deposit{value: amt};
+        /// @dev ensure eth deposited + balance before is equivalent to balance after depositing
         require(
             (amt + _balBefore) == ercWETH.balanceOf(address(this)),
             ErrorLib.Failed()
         );
         /// @dev take the ETH and deposit to the aave pool
-        wtg.depositETH(address(aavePool), address(this), 0 /* Zero ref code */);
+        wtg.depositETH(address(aavePool), OPERATIONS, 0 /* Zero ref code */);
         /// @dev mint the reciept token
         _mint(msg.sender, amt);
 
@@ -88,8 +114,13 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         uint256 _amount
     ) external WhileNotPaused nonReentrant {
         require(_amount > 0, ErrorLib.BelowMinimum());
+        /// @dev revert if there isn't enough weth to cover redemption
+        require(
+            _amount <= aToken.balanceOf(address(this)),
+            ErrorLib.RefillRequired()
+        );
         _burn(msg.sender, _amount);
-        uint256 received = ((_amount * redeemShareEth) / 1000);
+        uint256 received = ((_amount * redeemShareEth) / DIVISOR);
         /// @dev send underlying to user
         aavePool.withdraw(address(WETH), received, msg.sender);
         /// @dev send fee to operations

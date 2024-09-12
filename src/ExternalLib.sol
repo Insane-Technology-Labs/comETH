@@ -14,6 +14,7 @@ library ErrorLib {
     error SwapFailed();
     error DivisorError();
     error SelfReferProhibited();
+    error RefillRequired();
 }
 
 library EventLib {
