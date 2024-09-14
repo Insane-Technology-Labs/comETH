@@ -74,7 +74,7 @@ contract Bribable {
         uint256 dif = aToken.balanceOf(address(this)) - before;
 
         /// @dev fee logic
-        uint256 yieldFee = ((dif * shareU) / DENOM);
+        uint256 yieldFee = ((dif * shareYield) / DENOM);
         uint256 opexFee = dif - yieldFee;
         aavePool.withdraw(address(underlying), opexFee, OPERATIONS);
 
