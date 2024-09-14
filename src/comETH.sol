@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 import {OFT} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFT.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {ErrorLib, EventLib} from "./ExternalLib.sol";
+import {IWETH} from "./IWETH.sol";
 import {Bribable} from "./Bribable.sol";
 
 contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
@@ -24,9 +24,6 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @notice WETH address on the chain
     IWETH public immutable WETH;
 
-    /// @notice erc20 form of weth
-    IERC20 public ercWETH;
-
     /// @notice whether mint/redeem functionality are paused
     bool public paused;
 
@@ -35,8 +32,15 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @notice percentage of eth kept in aave for redemptions. 1000 = 100%
     uint256 public reserveFactor = 250;
 
-    modifier WhileNotPaused() {
+    /// @dev allow while paused is false
+    modifier whileNotPaused() {
         require(!paused, ErrorLib.Paused());
+        _;
+    }
+
+    /// @dev call the _hypothecate function upon interaction
+    modifier hypothecateOnCall() {
+        _hypothecate();
         _;
     }
 
@@ -48,7 +52,7 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         /// @dev paused by default
         paused = true;
         /// @dev initialize the WETH variables
-        (WETH, ercWETH) = (IWETH(_weth), IERC20(_weth));
+        WETH = IWETH(_weth);
         /// @dev grant the appropriate roles to the treasury
         _grantRole(DEFAULT_ADMIN_ROLE, OPERATIONS);
         _grantRole(OPERATOR_ROLE, OPERATIONS);
@@ -58,10 +62,12 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
 
     /// @notice mint comETH with your WETH
     /// @param _amount the amount of WETH to deposit
-    function mint(uint256 _amount) public WhileNotPaused nonReentrant {
+    function mint(
+        uint256 _amount
+    ) public whileNotPaused nonReentrant hypothecateOnCall {
         require(_amount > 0, ErrorLib.Zero());
         /// @dev accept weth from user
-        ercWETH.transferFrom(msg.sender, address(this), _amount);
+        WETH.transferFrom(msg.sender, address(this), _amount);
         WETH.withdraw(_amount);
         /// @dev take the ETH and deposit to the aave pool
         wtg.depositETH(
@@ -85,18 +91,24 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
 
     /// @notice mint comETH with ETH
     /// @dev accepts msg.value
-    function nativeMint() public payable WhileNotPaused nonReentrant {
+    function nativeMint()
+        public
+        payable
+        whileNotPaused
+        nonReentrant
+        hypothecateOnCall
+    {
         /// @dev check ETH sent
         uint256 amt = msg.value;
         /// @dev ensure eth is greater than 0
         require(amt > 0, ErrorLib.Zero());
         /// @dev 'snapshot' balance of weth before
-        uint256 _balBefore = ercWETH.balanceOf(address(this));
+        uint256 _balBefore = WETH.balanceOf(address(this));
         /// @dev deposit eth to weth
         WETH.deposit{value: amt};
         /// @dev ensure eth deposited + balance before is equivalent to balance after depositing
         require(
-            (amt + _balBefore) == ercWETH.balanceOf(address(this)),
+            (amt + _balBefore) == WETH.balanceOf(address(this)),
             ErrorLib.Failed()
         );
         /// @dev take the ETH and deposit to the aave pool
@@ -112,13 +124,14 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
     /// @param _amount the amount of tokens to redeem
     function redeemTokens(
         uint256 _amount
-    ) external WhileNotPaused nonReentrant {
+    ) external whileNotPaused nonReentrant hypothecateOnCall {
         require(_amount > 0, ErrorLib.BelowMinimum());
         /// @dev revert if there isn't enough weth to cover redemption
         require(
             _amount <= aToken.balanceOf(address(this)),
             ErrorLib.RefillRequired()
         );
+        /// @dev burn the user shares
         _burn(msg.sender, _amount);
         uint256 received = ((_amount * redeemShareEth) / DIVISOR);
         /// @dev send underlying to user
