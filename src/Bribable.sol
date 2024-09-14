@@ -17,10 +17,10 @@ contract Bribable {
     IAToken public aToken;
     IPool public aavePool;
     uint256 public constant DENOM = 10_000;
-    uint256 public shareU = 5000;
-    uint256 public shareT = 5000;
+    uint256 public shareYield = 5000;
+    uint256 public shareOpex = 5000;
 
-    bool public autoRewarder;
+    bool public autoBriber;
 
     uint8 internal initialized = 1;
 
@@ -39,7 +39,7 @@ contract Bribable {
         aToken = IAToken(_aToken);
         wtg = IWrappedTokenGatewayV3(_gateway);
         aavePool = IPool(_aavePool);
-        autoRewarder = false;
+        autoBriber = false;
         incentivesRecipient = IRewarder(_incentivesRecipient);
         underlying = IERC20(aToken.UNDERLYING_ASSET_ADDRESS());
         ++initialized;
@@ -51,22 +51,22 @@ contract Bribable {
     }
 
     /// @notice function to change the share %s
-    /// @param _shareU share of incentives to users
-    /// @param _shareT share of incentives to operations/token holders
+    /// @param _yieldFee share of incentives to users
+    /// @param _opexFee share of incentives to operations/token holders
     function changeShares(
-        uint256 _shareU,
-        uint256 _shareT
+        uint256 _yieldFee,
+        uint256 _opexFee
     ) external onlyOperator {
-        require((_shareU + _shareU) == DENOM, "!denom");
-        (shareU, shareT) = (_shareU, _shareT);
+        require((_yieldFee + _opexFee) == DENOM, "!denom");
+        (shareYield, shareOpex) = (_yieldFee, _opexFee);
     }
 
     /// @notice changes the auto rewarder status
-    function toggleAutoRewarder() external onlyOperator {
-        autoRewarder = !autoRewarder;
+    function toggleAutoBribe() external onlyOperator {
+        autoBriber = !autoBriber;
     }
 
-    /// @dev function which takes earned profit and distributes it
+    /// @dev should be called on most interactions with comETH, accrues interest and distributes
     function _hypothecate() internal {
         /// @dev poke logic
         uint256 before = aToken.balanceOf(address(this));
@@ -74,22 +74,22 @@ contract Bribable {
         uint256 dif = aToken.balanceOf(address(this)) - before;
 
         /// @dev fee logic
-        uint256 difU = ((dif * shareU) / DENOM);
-        uint256 difT = dif - difU;
-        aavePool.withdraw(address(underlying), difT, OPERATIONS);
+        uint256 yieldFee = ((dif * shareU) / DENOM);
+        uint256 opexFee = dif - yieldFee;
+        aavePool.withdraw(address(underlying), opexFee, OPERATIONS);
 
         /// @dev if the automatic rewarder system is enabled
-        if (autoRewarder) {
+        if (autoBriber) {
             /// @dev lp bribe next epoch
-            underlying.approve(address(incentivesRecipient), difU);
+            underlying.approve(address(incentivesRecipient), yieldFee);
             /// @dev LP bribe next epoch
             incentivesRecipient.notifyRewardAmountNextPeriod(
                 address(underlying),
-                difU
+                yieldFee
             );
         } else {
             /// @dev send difU to operations for processing
-            aToken.transfer(OPERATIONS, difU);
+            aToken.transfer(OPERATIONS, yieldFee);
         }
     }
 }
