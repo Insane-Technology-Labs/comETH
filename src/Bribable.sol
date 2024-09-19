@@ -88,7 +88,7 @@ contract Bribable {
                 yieldFee
             );
         } else {
-            /// @dev send difU to operations for processing
+            /// @dev send yieldFee to operations for distribution
             aToken.transfer(OPERATIONS, yieldFee);
         }
     }
