@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @dev import external libraries for error and event handling
 /// @dev implements ErrorLib & EventLib
-import {ErrorLib} from "./ExternalLib.sol";
+import {ErrorLib, EventLib} from "./libraries/ExternalLib.sol";
 
 contract INT is OFT, AccessControl {
     /// @notice Minter access control role

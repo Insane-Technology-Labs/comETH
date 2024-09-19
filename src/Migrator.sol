@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ErrorLib} from "./ExternalLib.sol";
+import {ErrorLib, EventLib} from "./libraries/ExternalLib.sol";
 
 interface ASTRO is IERC20 {
     function burn(uint256) external;

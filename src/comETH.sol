@@ -6,8 +6,8 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {ErrorLib, EventLib} from "./ExternalLib.sol";
-import {IWETH} from "./IWETH.sol";
+import {ErrorLib, EventLib} from "./libraries/ExternalLib.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
 import {Bribable} from "./Bribable.sol";
 
 contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
@@ -137,7 +137,12 @@ contract comETH is OFT, AccessControl, ReentrancyGuard, Bribable {
         /// @dev send underlying to user
         aavePool.withdraw(address(WETH), received, msg.sender);
         /// @dev send fee to operations
-        aavePool.withdraw(address(WETH), (_amount - received), OPERATIONS);
+        aavePool.withdraw(
+            address(WETH),
+            (_amount - received) -
+                1 wei /* 1 wei transfer to prevent 0 transfer*/,
+            OPERATIONS
+        );
         emit EventLib.Redemption(msg.sender, _amount);
     }
 

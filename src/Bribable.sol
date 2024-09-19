@@ -2,10 +2,10 @@
 pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IWrappedTokenGatewayV3} from "./IWrappedTokenGatewayV3.sol";
-import {IAToken} from "./IAToken.sol";
-import {IRewarder} from "./IRewarder.sol";
-import {IPool} from "./IPool.sol";
+import {IWrappedTokenGatewayV3} from "./interfaces/IWrappedTokenGatewayV3.sol";
+import {IAToken} from "./interfaces/IAToken.sol";
+import {IRewarder} from "./interfaces/IRewarder.sol";
+import {IPool} from "./interfaces/IPool.sol";
 
 contract Bribable {
     /// @notice multichain multisig address
